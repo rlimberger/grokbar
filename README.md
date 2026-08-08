@@ -20,9 +20,17 @@ Unofficial menu bar utility for [Grok](https://grok.com) / [Grok Build](https://
 
 ## Screenshots
 
-| Menu bar | Detail panel (dark) | Detail panel (light) |
-|:---:|:---:|:---:|
-| <img src="docs/screenshots/menubar.png" alt="Menu bar" width="320" /> | <img src="docs/screenshots/popover-dark.png" alt="Dark popover" width="200" /> | <img src="docs/screenshots/popover-light.png" alt="Light popover" width="200" /> |
+**Menu bar**
+
+![Grok Usage in the menu bar](docs/screenshots/menubar.png)
+
+**Detail panel**
+
+<p align="center">
+  <img src="docs/screenshots/popover-dark.png" alt="Detail panel (dark)" width="220" />
+  &nbsp;&nbsp;
+  <img src="docs/screenshots/popover-light.png" alt="Detail panel (light)" width="220" />
+</p>
 
 ### Menu bar
 
