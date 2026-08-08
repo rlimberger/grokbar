@@ -3,8 +3,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-APP_NAME="Grok Usage"
-EXEC_NAME="GrokUsageBar"
+APP_NAME="GrokBar"
+EXEC_NAME="GrokBar"
 BUILD_DIR="${ROOT}/build"
 APP_DIR="${BUILD_DIR}/${APP_NAME}.app"
 CONTENTS="${APP_DIR}/Contents"

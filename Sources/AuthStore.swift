@@ -143,7 +143,7 @@ enum AuthStore {
         request.timeoutInterval = 20
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("macos-grok-usage-bar/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("grokbar/1.0", forHTTPHeaderField: "User-Agent")
 
         var components = URLComponents()
         components.queryItems = [

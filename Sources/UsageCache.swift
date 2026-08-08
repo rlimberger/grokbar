@@ -5,7 +5,7 @@ enum UsageCache {
     private static var fileURL: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
-        let dir = base.appendingPathComponent("GrokUsageBar", isDirectory: true)
+        let dir = base.appendingPathComponent("GrokBar", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir.appendingPathComponent("last-snapshot.json")
     }

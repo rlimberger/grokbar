@@ -1,7 +1,7 @@
-# Grok Usage
+# GrokBar
 
 <p align="center">
-  <img src="docs/screenshots/menubar.png" alt="Grok Usage in the macOS menu bar" width="720" />
+  <img src="docs/screenshots/menubar.png" alt="GrokBar in the macOS menu bar" width="720" />
 </p>
 
 <p align="center">
@@ -22,7 +22,7 @@ Unofficial menu bar utility for [Grok](https://grok.com) / [Grok Build](https://
 
 **Menu bar**
 
-![Grok Usage in the menu bar](docs/screenshots/menubar.png)
+![GrokBar in the menu bar](docs/screenshots/menubar.png)
 
 **Detail panel**
 
@@ -70,15 +70,15 @@ grok login   # only if ~/.grok/auth.json is missing
 
 ```bash
 git clone https://github.com/rlimberger/grokbar.git
-cd macos-grok-usage-bar
+cd grokbar
 bash build.sh
-open "build/Grok Usage.app"
+open "build/GrokBar.app"
 ```
 
 Optional install:
 
 ```bash
-cp -R "build/Grok Usage.app" /Applications/
+cp -R "build/GrokBar.app" /Applications/
 ```
 
 Ad-hoc signed builds: first open via **right-click → Open** if Gatekeeper warns.
@@ -120,7 +120,7 @@ Plan names are **best-effort** (OIDC `tier` claim + monthly included pool). xAI 
 Sources/                 AppKit status item + SwiftUI panel + networking
 Resources/               Info.plist, Grok template icons
 docs/screenshots/        README images
-build.sh                 → build/Grok Usage.app
+build.sh                 → build/GrokBar.app
 ```
 
 ---

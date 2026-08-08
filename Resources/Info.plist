@@ -5,15 +5,15 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleExecutable</key>
-	<string>GrokUsageBar</string>
+	<string>GrokBar</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.rlimberger.GrokUsageBar</string>
+	<string>com.rlimberger.GrokBar</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Grok Usage</string>
+	<string>GrokBar</string>
 	<key>CFBundleDisplayName</key>
-	<string>Grok Usage</string>
+	<string>GrokBar</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -29,6 +29,6 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © 2026. Unofficial menu bar utility for Grok usage.</string>
+	<string>Copyright © 2026. GrokBar — unofficial menu bar utility for Grok usage.</string>
 </dict>
 </plist>

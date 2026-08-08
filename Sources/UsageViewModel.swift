@@ -76,7 +76,7 @@ final class UsageViewModel: ObservableObject {
             try LoginItemService.setEnabled(enabled)
             launchAtLogin = LoginItemService.isEnabled
             if enabled, SMAppService.mainApp.status == .requiresApproval {
-                loginItemMessage = "Allow Grok Usage in System Settings → General → Login Items."
+                loginItemMessage = "Allow GrokBar in System Settings → General → Login Items."
             } else if enabled, !launchAtLogin {
                 loginItemMessage = "Could not enable Launch at Login."
             } else {

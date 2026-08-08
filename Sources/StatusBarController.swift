@@ -9,7 +9,7 @@ import SwiftUI
 /// We pin to the leading edge of that strip — the leftmost status item.
 @MainActor
 final class StatusBarController: NSObject {
-    static let autosaveName = "GrokUsage"
+    static let autosaveName = "GrokBar"
 
     private let model: UsageViewModel
     private var statusItem: NSStatusItem?

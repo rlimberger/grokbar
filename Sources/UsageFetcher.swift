@@ -63,7 +63,7 @@ enum UsageFetcher {
         request.setValue("xai-grok-cli/\(clientVersion)", forHTTPHeaderField: "User-Agent")
         request.setValue(clientVersion, forHTTPHeaderField: "x-grok-client-version")
         request.setValue("cli", forHTTPHeaderField: "x-grok-client-mode")
-        request.setValue("macos-grok-usage-bar", forHTTPHeaderField: "x-grok-client-identifier")
+        request.setValue("grokbar", forHTTPHeaderField: "x-grok-client-identifier")
         return request
     }
 
