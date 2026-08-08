@@ -69,7 +69,7 @@ grok login   # only if ~/.grok/auth.json is missing
 ### Build from source
 
 ```bash
-git clone https://github.com/rlimberger/macos-grok-usage-bar.git
+git clone https://github.com/rlimberger/grokbar.git
 cd macos-grok-usage-bar
 bash build.sh
 open "build/Grok Usage.app"
