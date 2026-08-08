@@ -37,7 +37,7 @@ SOURCES=(
   "$ROOT/Sources/UsageViewModel.swift"
   "$ROOT/Sources/MenuContentView.swift"
   "$ROOT/Sources/StatusBarController.swift"
-  "$ROOT/Sources/GrokUsageBarApp.swift"
+  "$ROOT/Sources/GrokBarApp.swift"
 )
 
 echo "Compiling ${#SOURCES[@]} sources…"

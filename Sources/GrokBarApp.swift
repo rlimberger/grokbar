@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 @main
-struct GrokUsageBarApp: App {
+struct GrokBarApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
