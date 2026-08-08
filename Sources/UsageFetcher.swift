@@ -10,15 +10,29 @@ enum UsageFetcherError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unauthorized:
-            return "Unauthorized — try running `grok login`."
-        case .httpStatus(let code, let body):
-            return "HTTP \(code): \(body)"
+            return "Grok session expired."
+        case .httpStatus(let code, _):
+            return "Grok billing returned an error (\(code))."
         case .badPayload:
             return "Unexpected billing response from Grok."
-        case .transport(let message):
-            return message
+        case .transport:
+            return "Network error while fetching usage."
         case .timedOut:
             return "Timed out fetching usage."
+        }
+    }
+
+    var isAuthIssue: Bool {
+        if case .unauthorized = self { return true }
+        return false
+    }
+
+    var isTransient: Bool {
+        switch self {
+        case .timedOut, .transport:
+            return true
+        case .unauthorized, .httpStatus, .badPayload:
+            return false
         }
     }
 }

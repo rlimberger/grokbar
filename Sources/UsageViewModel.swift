@@ -1,6 +1,5 @@
 import AppKit
 import Foundation
-import ServiceManagement
 
 @MainActor
 final class UsageViewModel: ObservableObject {
@@ -8,8 +7,8 @@ final class UsageViewModel: ObservableObject {
     @Published private(set) var identity: AuthIdentity?
     @Published private(set) var lastError: String?
     @Published private(set) var isRefreshing = false
-    @Published var launchAtLogin = false
-    @Published private(set) var loginItemMessage: String?
+    /// Latest successful status.x.ai snapshot (nil = not fetched or last fetch failed).
+    @Published private(set) var serviceStatus: ServiceStatusSnapshot?
 
     private var fetchTask: Task<Void, Never>?
     private var pollTask: Task<Void, Never>?
@@ -17,44 +16,68 @@ final class UsageViewModel: ObservableObject {
     private var didStart = false
     private var lastFetchAttemptAt: Date?
 
-    /// Panel-open / opportunistic refresh threshold.
+    /// Panel-open / opportunistic refresh threshold (when data is good).
     private let staleAfter: TimeInterval = 15 * 60
     /// Background poll while awake (~72 requests/day if never sleeps).
     private let backgroundPollInterval: TimeInterval = 20 * 60
+    /// When not signed in / Grok missing, re-check more often so `grok login` shows up soon.
+    private let setupPollInterval: TimeInterval = 2 * 60
+    /// Declared outages: re-check status more often so recovery clears the banner quickly.
+    private let outagePollInterval: TimeInterval = 5 * 60
 
     /// Bumped every minute so the menu bar countdown stays live without a network call.
     @Published private(set) var clockTick: Date = Date()
 
+    var hasActiveOutage: Bool {
+        serviceStatus?.hasActiveIncident == true
+    }
+
     var menuBarTitle: String {
-        // Depend on clockTick so SwiftUI re-evaluates countdown text.
         _ = clockTick
+        let outage = hasActiveOutage
         switch state {
         case .loaded(let snap):
-            return formatBar(snap)
+            let bar = formatBar(snap)
+            return outage ? "⚠ \(bar)" : bar
+        case .unavailable:
+            // Prefer outage glyph over the calm dash when xAI is declaring issues.
+            return outage ? "⚠" : "—"
         case .failed:
-            return "!"
+            return outage ? "⚠" : "!"
         case .idle, .loading:
-            return "…"
+            return outage ? "⚠" : "…"
         }
     }
 
     var menuBarAccessibilityLabel: String {
         _ = clockTick
+        var parts: [String] = []
+        if let status = serviceStatus, status.hasActiveIncident {
+            parts.append("xAI status issue: \(status.headline)")
+        }
         switch state {
         case .loaded(let snap):
             let reset = formatCountdown(snap.resetsIn) ?? "unknown"
-            return "Grok \(Int(snap.usedPercent.rounded()))% used, \(snap.cycleLabel.lowercased()) pool, resets in \(reset)"
+            parts.append(
+                "Grok \(Int(snap.usedPercent.rounded()))% used, \(snap.cycleLabel.lowercased()) pool, resets in \(reset)"
+            )
+        case .unavailable(let title, let hint):
+            parts.append("GrokBar: \(title). \(hint)")
         case .failed(let message):
-            return "Grok usage error: \(message)"
+            parts.append("Grok usage error: \(message)")
         default:
-            return "Loading Grok usage"
+            if parts.isEmpty {
+                parts.append("Loading Grok usage")
+            }
         }
+        return parts.joined(separator: ". ")
     }
 
     func start() {
         guard !didStart else { return }
         didStart = true
-        refreshLoginItemState()
+        // Always try to stay registered for login; never surface this in UI.
+        LoginItemService.ensureEnabled()
         loadCacheIntoState()
         refreshIfStale()
         scheduleBackgroundPoll()
@@ -63,29 +86,7 @@ final class UsageViewModel: ObservableObject {
 
     func panelDidOpen() {
         start()
-        refreshLoginItemState()
         refreshIfStale()
-    }
-
-    func refreshLoginItemState() {
-        launchAtLogin = LoginItemService.isEnabled
-    }
-
-    func setLaunchAtLogin(_ enabled: Bool) {
-        do {
-            try LoginItemService.setEnabled(enabled)
-            launchAtLogin = LoginItemService.isEnabled
-            if enabled, SMAppService.mainApp.status == .requiresApproval {
-                loginItemMessage = "Allow GrokBar in System Settings → General → Login Items."
-            } else if enabled, !launchAtLogin {
-                loginItemMessage = "Could not enable Launch at Login."
-            } else {
-                loginItemMessage = nil
-            }
-        } catch {
-            launchAtLogin = LoginItemService.isEnabled
-            loginItemMessage = error.localizedDescription
-        }
     }
 
     func stop() {
@@ -108,11 +109,15 @@ final class UsageViewModel: ObservableObject {
     }
 
     private var isStale: Bool {
+        if hasActiveOutage { return true }
         if case .loaded(let snap) = state {
             if Date().timeIntervalSince(snap.fetchedAt) < staleAfter {
                 return false
             }
         }
+        // Setup / failed states should re-check on panel open even if we recently tried.
+        if case .unavailable = state { return true }
+        if case .failed = state { return true }
         if let last = lastFetchAttemptAt, Date().timeIntervalSince(last) < staleAfter {
             return false
         }
@@ -129,7 +134,13 @@ final class UsageViewModel: ObservableObject {
         }()
 
         if !hadLoadedData {
-            state = .loading
+            // Keep unavailable message visible while re-checking rather than a spinner flash
+            // after the first setup diagnosis — only spin from idle.
+            if case .idle = state {
+                state = .loading
+            } else if case .failed = state {
+                state = .loading
+            }
         }
 
         isRefreshing = true
@@ -167,14 +178,21 @@ final class UsageViewModel: ObservableObject {
             )
         }
         if case .loaded = state { return }
+        // Cache is only a bootstrap; a missing auth file on first live fetch will
+        // replace this with a clear unavailable state.
         state = .loaded(cached.snapshot)
     }
 
     private func apply(
-        result: Result<(AuthIdentity, UsageSnapshot), Error>,
+        result: BackgroundFetch,
         hadLoadedData: Bool
     ) async {
-        switch result {
+        // Status page is independent of auth — always take the latest successful snapshot.
+        if let status = result.serviceStatus {
+            self.serviceStatus = status
+        }
+
+        switch result.usage {
         case .success(let (identity, snapshot)):
             self.identity = identity
             self.state = .loaded(snapshot)
@@ -182,19 +200,108 @@ final class UsageViewModel: ObservableObject {
             UsageCache.save(snapshot, email: identity.email)
 
         case .failure(let error):
-            let message = friendlyMessage(for: error)
-            self.lastError = message
-            if !hadLoadedData {
-                if case .loaded = state {
-                    // keep cache
-                } else {
-                    state = .failed(message)
+            let classified = classify(error, outage: result.serviceStatus)
+            self.lastError = classified.menuMessage
+
+            switch classified.kind {
+            case .setup:
+                // Auth gone / never signed in: don't keep showing a stale percentage.
+                self.identity = nil
+                self.state = .unavailable(title: classified.menuMessage, hint: classified.hint)
+                UsageCache.clear()
+
+            case .transient:
+                // Keep last good snapshot in the bar; only fail hard with no data.
+                if !hadLoadedData {
+                    if case .loaded = state {
+                        // keep
+                    } else {
+                        state = .failed(classified.menuMessage)
+                    }
+                }
+
+            case .hard:
+                if !hadLoadedData {
+                    if case .loaded = state {
+                        // keep
+                    } else {
+                        state = .failed(classified.menuMessage)
+                    }
                 }
             }
         }
     }
 
-    private nonisolated static func fetchInBackground() async -> Result<(AuthIdentity, UsageSnapshot), Error> {
+    private enum FailureKind {
+        case setup
+        case transient
+        case hard
+    }
+
+    private struct ClassifiedError {
+        var kind: FailureKind
+        var menuMessage: String
+        var hint: String
+    }
+
+    private func classify(_ error: Error, outage: ServiceStatusSnapshot?) -> ClassifiedError {
+        let outageHint: String? = {
+            guard let outage, outage.hasActiveIncident else { return nil }
+            return "xAI status: \(outage.headline). See status.x.ai"
+        }()
+
+        if let auth = error as? AuthStoreError {
+            var hint = auth.recoveryHint
+            if let outageHint, !auth.isSetupIssue {
+                hint = outageHint
+            }
+            return ClassifiedError(
+                kind: auth.isSetupIssue ? .setup : .transient,
+                menuMessage: auth.errorDescription ?? "Not signed in to Grok.",
+                hint: hint
+            )
+        }
+        if let fetch = error as? UsageFetcherError {
+            if fetch.isAuthIssue {
+                return ClassifiedError(
+                    kind: .setup,
+                    menuMessage: "Grok session expired.",
+                    hint: "Run `grok login` again. GrokBar will recover on the next check."
+                )
+            }
+            if fetch.isTransient {
+                return ClassifiedError(
+                    kind: .transient,
+                    menuMessage: outageHint != nil
+                        ? "Usage unreachable (possible outage)."
+                        : (fetch.errorDescription ?? "Network error."),
+                    hint: outageHint ?? "Will retry automatically."
+                )
+            }
+            return ClassifiedError(
+                kind: .hard,
+                menuMessage: fetch.errorDescription ?? "Couldn’t load usage.",
+                hint: outageHint ?? "Will retry automatically."
+            )
+        }
+        return ClassifiedError(
+            kind: .transient,
+            menuMessage: error.localizedDescription,
+            hint: outageHint ?? "Will retry automatically."
+        )
+    }
+
+    private struct BackgroundFetch: Sendable {
+        var usage: Result<(AuthIdentity, UsageSnapshot), Error>
+        var serviceStatus: ServiceStatusSnapshot?
+    }
+
+    private nonisolated static func fetchInBackground() async -> BackgroundFetch {
+        async let statusTask: ServiceStatusSnapshot? = {
+            try? await StatusFetcher.fetch()
+        }()
+
+        let usage: Result<(AuthIdentity, UsageSnapshot), Error>
         do {
             var identity = try await AuthStore.loadValidIdentity()
 
@@ -203,23 +310,34 @@ final class UsageViewModel: ObservableObject {
                     token: identity.accessToken,
                     subscriptionTier: identity.tier
                 )
-                return .success((identity, snapshot))
+                usage = .success((identity, snapshot))
             } catch let fetch as UsageFetcherError {
                 if case .unauthorized = fetch {
-                    let cred = try AuthStore.loadCredential()
-                    let refreshed = try await AuthStore.refreshCredential(cred)
-                    identity = refreshed.identity
-                    let snapshot = try await UsageFetcher.fetch(
-                        token: identity.accessToken,
-                        subscriptionTier: identity.tier
-                    )
-                    return .success((identity, snapshot))
+                    // Token rejected — try one refresh, then surface session expiry cleanly.
+                    do {
+                        let cred = try AuthStore.loadCredential()
+                        let refreshed = try await AuthStore.refreshCredential(cred)
+                        identity = refreshed.identity
+                        let snapshot = try await UsageFetcher.fetch(
+                            token: identity.accessToken,
+                            subscriptionTier: identity.tier
+                        )
+                        usage = .success((identity, snapshot))
+                    } catch let auth as AuthStoreError {
+                        usage = .failure(auth)
+                    } catch {
+                        usage = .failure(AuthStoreError.sessionExpired)
+                    }
+                } else {
+                    usage = .failure(fetch)
                 }
-                throw fetch
             }
         } catch {
-            return .failure(error)
+            usage = .failure(error)
         }
+
+        let status = await statusTask
+        return BackgroundFetch(usage: usage, serviceStatus: status)
     }
 
     func openUsagePage() {
@@ -234,16 +352,36 @@ final class UsageViewModel: ObservableObject {
         }
     }
 
+    func openStatusPage() {
+        // Prefer first incident deep-link when available; otherwise the overview.
+        if let link = serviceStatus?.activeIncidents.first?.link {
+            NSWorkspace.shared.open(link)
+            return
+        }
+        NSWorkspace.shared.open(StatusFetcher.statusPageURL)
+    }
+
     func quit() {
         stop()
         NSApp.terminate(nil)
     }
 
+    private var currentPollInterval: TimeInterval {
+        if hasActiveOutage {
+            return outagePollInterval
+        }
+        if case .unavailable = state {
+            return setupPollInterval
+        }
+        return backgroundPollInterval
+    }
+
     private func scheduleBackgroundPoll() {
         pollTask?.cancel()
-        let interval = backgroundPollInterval
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
+                // Re-read interval each cycle (setup / outage poll faster than healthy data).
+                let interval = await MainActor.run { self?.currentPollInterval ?? 20 * 60 }
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
                 guard let self, !Task.isCancelled else { return }
                 self.refresh(force: true)
@@ -268,15 +406,5 @@ final class UsageViewModel: ObservableObject {
             return "\(pct)% \(countdown)"
         }
         return "\(pct)%"
-    }
-
-    private func friendlyMessage(for error: Error) -> String {
-        if let auth = error as? AuthStoreError {
-            return auth.localizedDescription
-        }
-        if let fetch = error as? UsageFetcherError {
-            return fetch.localizedDescription
-        }
-        return error.localizedDescription
     }
 }

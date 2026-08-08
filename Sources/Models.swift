@@ -98,6 +98,9 @@ enum LoadState: Equatable {
     case idle
     case loading
     case loaded(UsageSnapshot)
+    /// Recoverable problem: not signed in, Grok missing, session expired, etc.
+    case unavailable(title: String, hint: String)
+    /// Transient failure with no cached snapshot to show.
     case failed(String)
 }
 

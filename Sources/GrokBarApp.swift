@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 import SwiftUI
 
 @main
@@ -19,6 +20,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusBar: StatusBarController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Optional one-shot CLI for debugging login-item registration.
+        if CommandLine.arguments.contains("--register-login-item") {
+            let status = LoginItemService.ensureEnabled()
+            fputs("launch-at-login: \(statusDescription(status))\n", stderr)
+            if status == .requiresApproval {
+                fputs(
+                    "Allow GrokBar in System Settings → General → Login Items.\n",
+                    stderr
+                )
+            }
+            exit(status == .enabled || status == .requiresApproval ? 0 : 1)
+        }
+        if CommandLine.arguments.contains("--unregister-login-item") {
+            do {
+                try LoginItemService.setEnabled(false)
+                fputs("launch-at-login: disabled\n", stderr)
+                exit(0)
+            } catch {
+                fputs("launch-at-login failed: \(error.localizedDescription)\n", stderr)
+                exit(1)
+            }
+        }
+
         // Menu-bar only: no Dock icon.
         NSApp.setActivationPolicy(.accessory)
 
@@ -29,7 +53,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         controller.install()
         statusBar = controller
 
+        // model.start() also re-asserts Launch at Login silently.
         model.start()
+    }
+
+    private func statusDescription(_ status: SMAppService.Status) -> String {
+        switch status {
+        case .notRegistered: return "notRegistered"
+        case .enabled: return "enabled"
+        case .requiresApproval: return "requiresApproval"
+        case .notFound: return "notFound"
+        @unknown default: return "unknown"
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

@@ -33,6 +33,7 @@ SOURCES=(
   "$ROOT/Sources/AuthStore.swift"
   "$ROOT/Sources/UsageFetcher.swift"
   "$ROOT/Sources/UsageCache.swift"
+  "$ROOT/Sources/StatusFetcher.swift"
   "$ROOT/Sources/LoginItemService.swift"
   "$ROOT/Sources/UsageViewModel.swift"
   "$ROOT/Sources/MenuContentView.swift"
@@ -52,7 +53,8 @@ echo "Compiling ${#SOURCES[@]} sources…"
 
 cp "$ROOT/Resources/Info.plist" "${CONTENTS}/Info.plist"
 # Menu bar template mark (official Grok logo) — 1x / 2x / 3x
-for icon in GrokIcon.png "GrokIcon@2x.png" "GrokIcon@3x.png" GrokIcon.svg AppIcon.png; do
+# App icon: AppIcon.icns (Dock / Finder) + AppIcon.png fallback
+for icon in GrokIcon.png "GrokIcon@2x.png" "GrokIcon@3x.png" GrokIcon.svg AppIcon.png AppIcon.icns; do
   if [[ -f "$ROOT/Resources/$icon" ]]; then
     cp "$ROOT/Resources/$icon" "${RES_DIR}/$icon"
   fi

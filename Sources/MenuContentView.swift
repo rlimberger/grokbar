@@ -5,10 +5,52 @@ struct MenuContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            if model.hasActiveOutage {
+                outageBanner
+            }
             content
         }
         .padding(12)
         .frame(width: 220)
+    }
+
+    @ViewBuilder
+    private var outageBanner: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("xAI status issue")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+            if let headline = model.serviceStatus?.headline {
+                Text(headline)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if let status = model.serviceStatus {
+                ForEach(status.activeIncidents.prefix(3)) { incident in
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        if let service = incident.service {
+                            Text(service)
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(incident.status.capitalized)
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+            Button("Open status.x.ai") {
+                model.openStatusPage()
+            }
+            .buttonStyle(.plain)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .focusEffectDisabled()
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
     }
 
     @ViewBuilder
@@ -17,11 +59,39 @@ struct MenuContentView: View {
         case .loaded(let snap):
             loadedContent(snap)
 
+        case .unavailable(let title, let hint):
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(hint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Divider()
+                quitButton
+            }
+
         case .failed(let message):
-            Text(message)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if model.hasActiveOutage {
+                    Text("xAI is reporting a service issue — this may be global.")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("Will retry automatically.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Divider()
+                quitButton
+            }
 
         case .idle, .loading:
             HStack(spacing: 8) {
@@ -77,16 +147,19 @@ struct MenuContentView: View {
             }
 
             Divider()
-
-            Button("Quit") {
-                model.quit()
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(.secondary)
-            .font(.callout)
-            .focusEffectDisabled()
-            .keyboardShortcut("q")
+            quitButton
         }
+    }
+
+    private var quitButton: some View {
+        Button("Quit") {
+            model.quit()
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .font(.callout)
+        .focusEffectDisabled()
+        .keyboardShortcut("q")
     }
 
     private func labeledRow(_ title: String, _ value: String) -> some View {

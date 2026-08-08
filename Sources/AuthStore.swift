@@ -1,24 +1,55 @@
 import Foundation
 
 enum AuthStoreError: LocalizedError {
+    case missingGrokHome(URL)
     case missingAuthFile(URL)
     case invalidAuthJSON
     case noAccessToken
     case noRefreshToken
+    case sessionExpired
     case refreshFailed(String)
+
+    /// True when the user needs to install Grok or run `grok login` — not a transient glitch.
+    var isSetupIssue: Bool {
+        switch self {
+        case .missingGrokHome, .missingAuthFile, .invalidAuthJSON,
+             .noAccessToken, .noRefreshToken, .sessionExpired:
+            return true
+        case .refreshFailed:
+            return false
+        }
+    }
 
     var errorDescription: String? {
         switch self {
-        case .missingAuthFile(let url):
-            return "Missing Grok auth file at \(url.path). Run `grok login` once."
+        case .missingGrokHome:
+            return "Grok isn’t set up on this Mac yet."
+        case .missingAuthFile:
+            return "Not signed in to Grok."
         case .invalidAuthJSON:
-            return "Could not parse ~/.grok/auth.json."
+            return "Grok login data is unreadable."
         case .noAccessToken:
-            return "No Grok access token found. Run `grok login`."
-        case .noRefreshToken:
-            return "No refresh token available. Run `grok login`."
+            return "Not signed in to Grok."
+        case .noRefreshToken, .sessionExpired:
+            return "Grok session expired."
+        case .refreshFailed:
+            return "Couldn’t refresh Grok session."
+        }
+    }
+
+    /// Short guidance for the detail panel.
+    var recoveryHint: String {
+        switch self {
+        case .missingGrokHome:
+            return "Install Grok Build, run `grok login`, then GrokBar will pick it up."
+        case .missingAuthFile, .noAccessToken:
+            return "Run `grok login` in a terminal. GrokBar watches for sign-in automatically."
+        case .invalidAuthJSON:
+            return "Run `grok login` again to recreate the auth file."
+        case .noRefreshToken, .sessionExpired:
+            return "Run `grok login` again to renew the session."
         case .refreshFailed(let detail):
-            return "Token refresh failed: \(detail)"
+            return detail
         }
     }
 }
@@ -66,13 +97,39 @@ enum AuthStore {
     }
 
     static func loadCredential() throws -> AuthCredential {
+        let home = grokHome
+        var isDir: ObjCBool = false
+        let homeExists = FileManager.default.fileExists(atPath: home.path, isDirectory: &isDir)
+        if !homeExists || !isDir.boolValue {
+            throw AuthStoreError.missingGrokHome(home)
+        }
+
         let url = authFileURL
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw AuthStoreError.missingAuthFile(url)
         }
 
-        let data = try Data(contentsOf: url)
-        guard let root = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        let data: Data
+        do {
+            data = try Data(contentsOf: url)
+        } catch {
+            // File vanished between exists check and read, or permission denied.
+            throw AuthStoreError.missingAuthFile(url)
+        }
+
+        if data.isEmpty {
+            throw AuthStoreError.noAccessToken
+        }
+
+        let root: [String: Any]
+        do {
+            guard let parsed = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw AuthStoreError.invalidAuthJSON
+            }
+            root = parsed
+        } catch let err as AuthStoreError {
+            throw err
+        } catch {
             throw AuthStoreError.invalidAuthJSON
         }
 
@@ -166,6 +223,19 @@ enum AuthStore {
         }
         guard (200..<300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
+            // OIDC invalid_grant / revoked refresh → treat as expired session, not a network blip.
+            let lower = body.lowercased()
+            if http.statusCode == 400 || http.statusCode == 401 || http.statusCode == 403,
+               lower.contains("invalid_grant")
+                || lower.contains("invalid_token")
+                || lower.contains("expired")
+                || lower.contains("revoked")
+            {
+                throw AuthStoreError.sessionExpired
+            }
+            if http.statusCode == 401 || http.statusCode == 403 {
+                throw AuthStoreError.sessionExpired
+            }
             throw AuthStoreError.refreshFailed("HTTP \(http.statusCode) \(body.prefix(160))")
         }
 
@@ -203,6 +273,10 @@ enum AuthStore {
 
     private static func writeEntry(scopeKey: String, entry: [String: Any]) throws {
         let url = authFileURL
+        let dir = url.deletingLastPathComponent()
+        // Grok home may have been removed after we loaded credentials; recreate if needed.
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
         var root: [String: Any] = [:]
         if let data = try? Data(contentsOf: url),
            let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
